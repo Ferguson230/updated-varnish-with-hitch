@@ -15,7 +15,7 @@ acl purge {
 }
 
 sub vcl_recv {
-    set req.max_grace = 5m;
+    set req.grace = 5m;
 
     if (req.method == "PURGE") {
         if (!client.ip ~ purge) {
