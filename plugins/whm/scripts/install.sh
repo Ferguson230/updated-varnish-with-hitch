@@ -50,19 +50,12 @@ ln -sf "${SERVICE_BIN}/provision.sh" /usr/local/bin/varnish-provision
 ln -sf "${SERVICE_BIN}/varnishctl.sh" /usr/local/bin/varnishctl
 ln -sf "${REPO_ROOT}/update_hitch_certs.sh" /usr/local/bin/update_hitch_certs.sh
 
-# Refresh WHM plugin registration with new AppConfig
-install -d -m 0755 "${APPCONF_DIR}"
-if [[ -f "${NEW_APPCONF_SRC}" ]]; then
-  install -m 0644 "${NEW_APPCONF_SRC}" "${NEW_APPCONF_DST}"
-  sed -i 's/\r$//' "${NEW_APPCONF_DST}" || true
-  if [[ -x "${APPCONF_BIN}/register_appconfig" ]]; then
-    "${APPCONF_BIN}/register_appconfig" "${NEW_APPCONF_DST}"
-  fi
-fi
-
 cat <<'EOF'
 WHM Varnish Cache Manager installed.
+Access the interface at:
+  WHM URL: https://your-server:2087/cgi/varnish/index.cgi
+
 Next steps:
   1. Configure sudoers so cPanel users can call varnishctl flush/purge if desired.
-  2. Visit WHM > Plugins > Varnish + Hitch Accelerator to use the interface.
+  2. The plugin is accessible directly via the URL above.
 EOF
