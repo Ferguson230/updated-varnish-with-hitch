@@ -14,8 +14,6 @@ APPCONF_BIN="/usr/local/cpanel/bin"
 NEW_APP_NAME="varnish_whm_manager"
 NEW_APPCONF_SRC="${REPO_ROOT}/plugins/whm/${NEW_APP_NAME}.conf"
 NEW_APPCONF_DST="${APPCONF_DIR}/${NEW_APP_NAME}.conf"
-LEGACY_APP_NAME="varnish_cache_manager"
-LEGACY_APPCONF="${APPCONF_DIR}/${LEGACY_APP_NAME}.conf"
 
 install -d -m 0755 "${TARGET_DIR}"
 install -d -m 0755 "${TARGET_DIR}/assets"
@@ -52,12 +50,8 @@ ln -sf "${SERVICE_BIN}/provision.sh" /usr/local/bin/varnish-provision
 ln -sf "${SERVICE_BIN}/varnishctl.sh" /usr/local/bin/varnishctl
 ln -sf "${REPO_ROOT}/update_hitch_certs.sh" /usr/local/bin/update_hitch_certs.sh
 
-# Refresh WHM plugin registration
+# Refresh WHM plugin registration with new AppConfig
 install -d -m 0755 "${APPCONF_DIR}"
-if [[ -x "${APPCONF_BIN}/unregister_appconfig" ]]; then
-  "${APPCONF_BIN}/unregister_appconfig" "${LEGACY_APP_NAME}" || true
-fi
-rm -f "${LEGACY_APPCONF}" || true
 if [[ -f "${NEW_APPCONF_SRC}" ]]; then
   install -m 0644 "${NEW_APPCONF_SRC}" "${NEW_APPCONF_DST}"
   if [[ -x "${APPCONF_BIN}/register_appconfig" ]]; then
