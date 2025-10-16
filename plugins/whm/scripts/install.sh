@@ -21,6 +21,9 @@ cp "${REPO_ROOT}/plugins/whm/cgi/index.cgi" "${TARGET_DIR}/index.cgi"
 cp "${REPO_ROOT}/plugins/whm/cgi/varnish_manager.cgi" "${TARGET_DIR}/varnish_manager.cgi"
 chmod 0755 "${TARGET_DIR}/index.cgi" "${TARGET_DIR}/varnish_manager.cgi"
 
+# Backwards compatibility with legacy entry points
+ln -sf "${TARGET_DIR}/varnish_manager.cgi" "${TARGET_DIR}/whm_varnish_manager.cgi"
+
 cp "${REPO_ROOT}/plugins/whm/static/index.html" "${TARGET_DIR}/index.html"
 cp "${REPO_ROOT}/plugins/whm/static/app.css" "${TARGET_DIR}/assets/app.css"
 cp "${REPO_ROOT}/plugins/whm/static/app.js" "${TARGET_DIR}/assets/app.js"
