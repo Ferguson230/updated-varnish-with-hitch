@@ -18,20 +18,33 @@ cp "${REPO_ROOT}/plugins/cpanel/cgi/varnish_user.cgi" "${TARGET_DIR}/varnish_use
 chmod 0644 "${TARGET_DIR}/index.live.php" "${TARGET_DIR}/index.html" "${TARGET_DIR}/app.css" "${TARGET_DIR}/app.js"
 chmod 0755 "${TARGET_DIR}/varnish_user.cgi"
 
-# Fix Windows line endings if present
-sed -i 's/\r$//' "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin" 2>/dev/null || true
+# Create a simple dynamic icon list entry for cPanel
+DYNAMICUI_DIR="/var/cpanel/dynamicui/jupiter/Software"
+install -d -m 0755 "${DYNAMICUI_DIR}"
 
-if [[ -x /usr/local/cpanel/bin/register_cpanelplugin ]]; then
-	/usr/local/cpanel/bin/register_cpanelplugin < "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin"
-elif [[ -x /usr/local/cpanel/bin/manage_plugins ]]; then
-	/usr/local/cpanel/bin/manage_plugins install "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin"
-else
-	echo "No cPanel plugin registration utility found" >&2
-	exit 1
+cat > "${DYNAMICUI_DIR}/varnish.yaml" <<'DYNAMICUI'
+---
+id: varnish_edge_accelerator
+name: Varnish Edge Accelerator
+description: Manage Varnish cache for your website
+url: varnish/index.live.php
+icon: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHBhdGggZmlsbD0iIzAwNzNhYSIgZD0iTTI0IDRMMCA0MCA0OCA0MHoiLz48L3N2Zz4=
+order: 50
+DYNAMICUI
+
+chmod 0644 "${DYNAMICUI_DIR}/varnish.yaml"
+
+# Rebuild the dynamicui cache
+if [[ -x /usr/local/cpanel/bin/rebuild_sprites ]]; then
+	/usr/local/cpanel/bin/rebuild_sprites --all >/dev/null 2>&1 || true
 fi
 
 cat <<'EOF'
 cPanel Varnish plugin installed.
-Users will find "Varnish Edge Accelerator" inside the Software section of Jupiter.
-Ensure sudoers entries exist to allow varnishctl purge/flush from user accounts.
+Users can access "Varnish Edge Accelerator" in the Software section of cPanel.
+Direct URL: https://your-server:2083/frontend/jupiter/varnish/index.live.php
+
+Next steps:
+  1. Configure sudoers so cPanel users can call varnishctl flush/purge if desired.
+  2. Users may need to refresh cPanel or log out/in to see the new plugin.
 EOF

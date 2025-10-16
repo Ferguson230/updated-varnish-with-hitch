@@ -1,15 +1,22 @@
 #!/bin/bash
+# Uninstaller for the cPanel user-facing Varnish plugin.
 
 set -euo pipefail
 
 TARGET_DIR="/usr/local/cpanel/base/frontend/jupiter/varnish"
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../../.. && pwd)"
+DYNAMICUI_FILE="/var/cpanel/dynamicui/jupiter/Software/varnish.yaml"
 
-if [[ -x /usr/local/cpanel/bin/unregister_cpanelplugin ]]; then
-	/usr/local/cpanel/bin/unregister_cpanelplugin "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin" || true
-elif [[ -x /usr/local/cpanel/bin/manage_plugins ]]; then
-	/usr/local/cpanel/bin/manage_plugins uninstall "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin" || true
+# Remove dynamic UI entry
+if [[ -f "${DYNAMICUI_FILE}" ]]; then
+	rm -f "${DYNAMICUI_FILE}"
+	if [[ -x /usr/local/cpanel/bin/rebuild_sprites ]]; then
+		/usr/local/cpanel/bin/rebuild_sprites --all >/dev/null 2>&1 || true
+	fi
 fi
-rm -rf "${TARGET_DIR}"
 
-echo "cPanel Varnish plugin removed."
+# Remove plugin files
+if [[ -d "${TARGET_DIR}" ]]; then
+	rm -rf "${TARGET_DIR}"
+fi
+
+echo "cPanel Varnish plugin uninstalled."
