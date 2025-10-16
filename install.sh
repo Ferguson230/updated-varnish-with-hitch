@@ -131,6 +131,10 @@ fi
 
 if ${INSTALL_CPANEL}; then
     run_step "Installing cPanel plugin" bash "${CPANEL_INSTALLER}"
+    # Ensure sudoers reflect current cPanel users automatically
+    if [[ -x "${REPO_ROOT}/service/bin/update_sudoers.sh" ]]; then
+        run_step "Updating sudoers for cPanel users" bash "${REPO_ROOT}/service/bin/update_sudoers.sh"
+    fi
 else
     log "Skipping cPanel plugin install"
 fi

@@ -149,6 +149,8 @@ fi
 
 if ${RUN_CPANEL}; then
     run_step "Removing cPanel plugin" bash "${CPANEL_UNINSTALLER}"
+    # Clean up generated sudoers file
+    run_step_soft "Removing generated sudoers entries" rm -f /etc/sudoers.d/varnish-cpanel-users
 else
     log "Skipping cPanel plugin removal"
 fi
