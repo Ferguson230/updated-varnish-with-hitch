@@ -1,4 +1,4 @@
-const API_ENDPOINT = 'index.live.php';
+const API_ENDPOINT = 'varnish_user.cgi';
 const logOutput = document.getElementById('logOutput');
 const toast = document.getElementById('toast');
 const statusBadge = document.getElementById('statusBadge');

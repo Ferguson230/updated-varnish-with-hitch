@@ -8,7 +8,7 @@ use JSON::PP;
 use FindBin;
 use File::Spec;
 use Cpanel::SafeRun::Timed qw(timedsaferun);
-use Cpanel::API ();         # For domain listing
+use Cpanel::API ();         # For domain listing (fallback if available)
 
 $| = 1;
 
@@ -113,8 +113,26 @@ sub handle_flush {
 }
 
 sub handle_domains {
-    my $api = Cpanel::API->new();
-    my $result = $api->call('UAPI', 'Domains', 'list_domains');
-    die "Domain lookup failed" if !$result || $result->{status} != 1;
-    return { domains => $result->{data} };
+    # Prefer uapi CLI to avoid LIVEAPI context issues
+    my ($status, $out) = run_cmd('uapi', '--output', 'json', 'Domains', 'list_domains');
+    if ($status == 0) {
+        my $decoded = eval { $json->decode($out) } || {};
+        if ($decoded->{status} && $decoded->{status} == 1) {
+            return { domains => $decoded->{data} };
+        }
+    }
+    # Fallback to Cpanel::API if available
+    eval {
+        my $api = Cpanel::API->new();
+        my $result = $api->call('UAPI', 'Domains', 'list_domains');
+        if ($result && $result->{status} == 1) {
+            die "__OK__" . $json->encode({ domains => $result->{data} });
+        }
+    };
+    if ($@ && $@ =~ /^__OK__(.*)/s) {
+        my $payload = $1;
+        my $res = eval { $json->decode($payload) } || { domains => {} };
+        return $res;
+    }
+    die "Domain lookup failed";
 }
