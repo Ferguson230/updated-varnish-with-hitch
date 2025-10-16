@@ -1,0 +1,13 @@
+{
+  "security_headers": {
+    "enabled": false,
+    "max_age": 31536000,
+    "include_subdomains": true,
+    "preload": false,
+    "frame_options": "SAMEORIGIN",
+    "referrer_policy": "strict-origin-when-cross-origin",
+    "permissions_policy": "geolocation=()",
+    "content_type_options": "nosniff",
+    "xss_protection": "1; mode=block"
+  }
+}

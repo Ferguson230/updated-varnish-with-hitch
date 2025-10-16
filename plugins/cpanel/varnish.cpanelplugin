@@ -1,0 +1,10 @@
+name=Varnish Edge Accelerator
+author=TurnUp Hosting
+authorurl=https://turnuphosting.com
+version=1.0
+feature=varnish_edge_accelerator
+type=app
+visible=1
+category=Performance
+entry=varnish/index.live.php
+requires=cpanel

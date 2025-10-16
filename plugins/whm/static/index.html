@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>WHM Varnish Cache Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" integrity="sha512-Xx8kQ0+8zgmYvXcx6IUH6wy5+Lzv4yH4zpSY0q4KyMESn5Z1fbMP0A+nisOam1iGSRce7VYjgJnj2yRvEHW4mg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+    <header class="whm-header">
+        <div class="brand">
+            <i class="fas fa-rocket"></i>
+            <h1>Varnish + Hitch Accelerator</h1>
+        </div>
+        <div class="status-pill" id="stackState">Loading…</div>
+    </header>
+
+    <main class="container">
+        <section class="card">
+            <div class="card-header">
+                <h2><i class="fas fa-gauge-high"></i> Performance Overview</h2>
+                <span class="muted" id="statusTimestamp"></span>
+            </div>
+            <div class="metrics-grid" id="metricsGrid">
+                <div class="metric" data-key="services.varnish">
+                    <div class="metric-icon healthy"><i class="fas fa-fire"></i></div>
+                    <h3>Varnish</h3>
+                    <p class="metric-value" data-field="services.varnish">—</p>
+                    <p class="metric-note">HTTP accelerator status</p>
+                </div>
+                <div class="metric" data-key="services.hitch">
+                    <div class="metric-icon healthy"><i class="fas fa-lock"></i></div>
+                    <h3>Hitch</h3>
+                    <p class="metric-value" data-field="services.hitch">—</p>
+                    <p class="metric-note">TLS proxy status</p>
+                </div>
+                <div class="metric" data-key="metrics.cache_hit">
+                    <div class="metric-icon info"><i class="fas fa-bolt"></i></div>
+                    <h3>Cache Hits</h3>
+                    <p class="metric-value" data-field="metrics.cache_hit">0</p>
+                    <p class="metric-note">Requests served from cache</p>
+                </div>
+                <div class="metric" data-key="metrics.cache_miss">
+                    <div class="metric-icon warning"><i class="fas fa-arrow-rotate-right"></i></div>
+                    <h3>Cache Misses</h3>
+                    <p class="metric-value" data-field="metrics.cache_miss">0</p>
+                    <p class="metric-note">Requests hitting origin</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="card action-grid">
+            <div class="action-column">
+                <h2><i class="fas fa-screwdriver-wrench"></i> Stack Controls</h2>
+                <div class="button-group">
+                    <button class="btn primary" data-action="start"><i class="fas fa-play"></i> Start</button>
+                    <button class="btn" data-action="restart"><i class="fas fa-rotate"></i> Restart</button>
+                    <button class="btn" data-action="reload"><i class="fas fa-arrows-rotate"></i> Reload</button>
+                    <button class="btn danger" data-action="stop"><i class="fas fa-stop"></i> Stop</button>
+                </div>
+                <div class="button-group">
+                    <button class="btn" data-action="enable"><i class="fas fa-toggle-on"></i> Enable at Boot</button>
+                    <button class="btn" data-action="disable"><i class="fas fa-toggle-off"></i> Disable at Boot</button>
+                </div>
+            </div>
+
+            <div class="action-column">
+                <h2><i class="fas fa-broom"></i> Cache Management</h2>
+                <form id="purgeForm" class="purge-form">
+                    <label for="purgeUrl">Purge specific URL</label>
+                    <input type="url" id="purgeUrl" name="purgeUrl" placeholder="https://example.com/path" autocomplete="off">
+                    <div class="button-group">
+                        <button class="btn" type="submit"><i class="fas fa-location-arrow"></i> Purge URL</button>
+                        <button class="btn danger" type="button" id="flushAll"><i class="fas fa-fire-extinguisher"></i> Flush Everything</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <h2><i class="fas fa-cloud-upload-alt"></i> Provisioning</h2>
+            </div>
+            <p>This task applies the hardening and optimisation steps from the installation guide: repository enablement, Varnish 7.5 install, Hitch TLS proxy, service wiring, and the opinionated default VCL tuned for WordPress, WooCommerce, Node.js proxies, and other dynamic workloads.</p>
+            <button class="btn primary" id="provisionBtn"><i class="fas fa-rocket"></i> Install / Reinstall Stack</button>
+            <button class="btn" id="certSyncBtn"><i class="fas fa-certificate"></i> Sync SSL to Hitch</button>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <h2><i class="fas fa-shield-alt"></i> Security Headers</h2>
+            </div>
+            <form id="securityForm" class="security-form">
+                <div class="security-grid">
+                    <label class="toggle">
+                        <input type="checkbox" id="securityEnabled">
+                        <span>Enable Strict Transport and Security Headers</span>
+                    </label>
+
+                    <label class="toggle">
+                        <input type="checkbox" id="securityIncludeSubdomains">
+                        <span>Include Subdomains (HSTS)</span>
+                    </label>
+
+                    <label class="toggle">
+                        <input type="checkbox" id="securityPreload">
+                        <span>Preload (submit to HSTS preload list)</span>
+                    </label>
+
+                    <label class="field">
+                        <span>HSTS max-age (seconds)</span>
+                        <input type="number" id="securityMaxAge" min="0" max="63072000" step="1" value="31536000">
+                    </label>
+
+                    <label class="field">
+                        <span>X-Frame-Options</span>
+                        <input type="text" id="securityFrameOptions" placeholder="SAMEORIGIN">
+                    </label>
+
+                    <label class="field">
+                        <span>Referrer-Policy</span>
+                        <input type="text" id="securityReferrerPolicy" placeholder="strict-origin-when-cross-origin">
+                    </label>
+
+                    <label class="field">
+                        <span>Permissions-Policy</span>
+                        <input type="text" id="securityPermissionsPolicy" placeholder="geolocation=()">
+                    </label>
+                </div>
+                <p class="muted">When enabled, Varnish attaches Strict-Transport-Security, X-Frame-Options, X-Content-Type-Options, X-XSS-Protection, Referrer-Policy, and Permissions-Policy headers. Changes trigger an automatic reload; disable the toggle to remove them instantly.</p>
+                <button class="btn primary" type="submit"><i class="fas fa-save"></i> Save Security Policy</button>
+            </form>
+        </section>
+
+        <section class="card">
+            <div class="card-header">
+                <h2><i class="fas fa-file-alt"></i> Activity Log</h2>
+            </div>
+            <pre id="activityLog" class="activity-log">Welcome to the Varnish Cache Manager for WHM.
+- Review installation prerequisites in the Installation Guide before provisioning.
+- Metrics update automatically every 30 seconds.
+</pre>
+        </section>
+    </main>
+
+    <div class="toast" id="toast"></div>
+
+    <script src="assets/app.js"></script>
+</body>
+</html>
