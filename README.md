@@ -2,6 +2,19 @@
 
 This project packages a battle-tested Varnish Cache 7.5 + Hitch TLS proxy stack for EasyApache 4 servers together with a full WHM provisioning plugin and a cPanel end-user control panel. The implementation follows the operational checklist in `installation guide` and expands it with automation, service orchestration, and modern UIs derived from the preview mock-ups.
 
+## Quick Start
+
+1. Clone the repository and change into it:
+    ```bash
+    git clone https://github.com/Ferguson230/updated-varnish-with-hitch.git
+    cd updated-varnish-with-hitch
+    ```
+2. Run the consolidated installer (provisions the stack + deploys both plugins):
+    ```bash
+    sudo ./install.sh
+    ```
+    Use `./install.sh --help` for options such as skipping plugins or running the provisioning engine only.
+
 ## Prerequisites
 
 - AlmaLinux 8 / Rocky 8 / RHEL 8 with WHM & cPanel installed.
@@ -25,32 +38,26 @@ This project packages a battle-tested Varnish Cache 7.5 + Hitch TLS proxy stack 
 
 ## Provisioning the Stack
 
-1. Clone the repository and change into it:
-     ```bash
-     git clone https://github.com/turnuphosting/varnish-cache-installation-on-WHM-and-cPanel-for-RHElL-based-Linux-version-8.x.git
-     cd varnish-cache-installation-on-WHM-and-cPanel-for-RHElL-based-Linux-version-8.x
-     ```
-2. Execute the provisioning script (runs all steps from the guide):
-     ```bash
-     sudo ./install_varnish_hitch.sh
-     ```
-     The script will:
-     - Update the OS with `dnf update -y`.
-     - Add the `varnish75` packagecloud repository.
-     - Install Varnish Cache 7.5 and Hitch.
-    - Copy and adjust `varnish.service` so Varnish listens on `:80` and Hitch on `127.0.0.1:4443`, applying high-performance thread pool and HTTP/2 parameters.
-    - Render `/etc/varnish/default.vcl` from the template, binding the detected server IP and injecting optional security headers.
-     - Harvest `SSLCertificate` paths from EasyApache and populate `/etc/hitch/hitch.conf`.
-     - Enable, start, and sanity-check Varnish + Hitch.
-     Logs are written to `/var/log/varnish-whm-manager.log`.
+The consolidated installer wraps `service/bin/provision.sh`, but you can invoke the provisioning workflow directly when needed:
 
-3. Optional: rerun certificate sync as needed (`sudo /usr/local/bin/update_hitch_certs.sh`).
+```bash
+sudo ./install_varnish_hitch.sh
+```
+
+This script will:
+- Update the OS with `dnf update -y`.
+- Add the `varnish75` packagecloud repository.
+- Install Varnish Cache 7.5 and Hitch.
+- Copy and adjust `varnish.service` so Varnish listens on `:80` and Hitch on `127.0.0.1:4443`, applying high-performance thread pool and HTTP/2 parameters.
+- Render `/etc/varnish/default.vcl` from the template, binding the detected server IP and injecting optional security headers.
+- Harvest `SSLCertificate` paths from EasyApache and populate `/etc/hitch/hitch.conf`.
+- Enable, start, and sanity-check Varnish + Hitch (logs go to `/var/log/varnish-whm-manager.log`).
+
+Optional: rerun certificate sync as needed (`sudo /usr/local/bin/update_hitch_certs.sh`).
 
 ## Installing the WHM Plugin
 
-```bash
-sudo bash plugins/whm/scripts/install.sh
-```
+Run `sudo ./install.sh --whm-only` to deploy just the WHM interface. The underlying script `sudo bash plugins/whm/scripts/install.sh` remains available if you prefer to call it directly.
 
 - Installs assets into `/usr/local/cpanel/whostmgr/docroot/cgi/varnish/`.
 - Deploys service helpers to `/opt/varnish-whm-manager/bin/` (`provision.sh`, `varnishctl.sh`, `update_certs.sh`).
@@ -61,9 +68,7 @@ The WHM UI exposes stack status, metrics (via `varnishstat`), provisioning, serv
 
 ## Installing the cPanel Plugin (Jupiter Theme)
 
-```bash
-sudo bash plugins/cpanel/scripts/install.sh
-```
+Run `sudo ./install.sh --cpanel-only` to deploy only the end-user plugin. Alternately, execute `sudo bash plugins/cpanel/scripts/install.sh` directly.
 
 - Copies the UI bundle to `/usr/local/cpanel/base/frontend/jupiter/varnish/`.
 - Registers the `.cpanelplugin` manifest so “Varnish Edge Accelerator” appears under **Software** for each account.
@@ -94,10 +99,11 @@ Add the desired cPanel users to the `varnishusers` group.
 Makefile shortcuts are available when working in the repository:
 
 - `make bootstrap` – Fix execute bits on all helper scripts (safe to run multiple times).
+- `make install` – Run the consolidated installer (`sudo ./install.sh`).
 - `make provision` – Run the full provisioning workflow (wraps `service/bin/provision.sh`).
 - `make render-config` – Only re-render `default.vcl` from the template and reload Varnish (honours security header state).
 - `make whm-install` / `make cpanel-install` – Deploy the WHM or cPanel plugins.
-- `make uninstall` – Stop services, remove plugins, and uninstall packages (best-effort).
+- `make uninstall` – Invoke the consolidated uninstaller (`sudo ./uninstall.sh`).
 
 ## WordPress / App Notes
 
@@ -114,13 +120,10 @@ Makefile shortcuts are available when working in the repository:
 ## Uninstalling
 
 ```bash
-sudo bash plugins/cpanel/scripts/uninstall.sh
-sudo bash plugins/whm/scripts/uninstall.sh
-sudo systemctl disable --now varnish hitch
-sudo dnf remove varnish hitch -y
+sudo ./uninstall.sh
 ```
 
-Finally, revert Apache to ports 80/443 via WHM ➜ **Tweak Settings**.
+Run `./uninstall.sh --help` to discover options such as keeping packages or skipping service stops. After teardown, revert Apache to ports 80/443 via WHM ➜ **Tweak Settings**.
 
 ## Credits
 

@@ -140,6 +140,6 @@ if( strpos( $_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false )
 
 
 
-If you have WordPress Installed, please follow the configuration below to optimize it further as seen https://github.com/turnuphosting/varnish-cache-installation-on-WHM-and-cPanel-for-RHElL-based-Linux-version-8.x/blob/main/vcl%20config%20for%20wordpress.
+If you have WordPress Installed, please follow the configuration below to optimize it further as seen https://github.com/Ferguson230/updated-varnish-with-hitch/blob/main/vcl%20config%20for%20wordpress.
 
 That's it, enjoy.

@@ -1,4 +1,4 @@
-.PHONY: provision render-config whm-install whm-uninstall cpanel-install cpanel-uninstall bootstrap uninstall clean
+.PHONY: install provision render-config whm-install whm-uninstall cpanel-install cpanel-uninstall bootstrap uninstall clean
 
 SHELL := /bin/bash
 SERVICE_BIN := service/bin
@@ -7,7 +7,7 @@ CP_SCRIPTS := plugins/cpanel/scripts
 
 # Ensure execution bits are present on helper scripts (idempotent).
 bootstrap:
-	chmod +x install_varnish_hitch.sh update_hitch_certs.sh || true
+	chmod +x install.sh uninstall.sh install_varnish_hitch.sh update_hitch_certs.sh || true
 	chmod +x $(SERVICE_BIN)/*.sh || true
 	chmod +x plugins/whm/cgi/*.cgi || true
 	chmod +x $(WHM_SCRIPTS)/*.sh || true
@@ -17,6 +17,10 @@ bootstrap:
 # Run the full provisioning workflow defined in service/bin/provision.sh
 provision: bootstrap
 	sudo $(SERVICE_BIN)/provision.sh
+
+# Provision stack and deploy both plugins
+install: bootstrap
+	sudo ./install.sh
 
 # Re-render default.vcl and reload Varnish without touching packages/services
 render-config: bootstrap
@@ -40,13 +44,7 @@ cpanel-uninstall:
 
 # Convenience target to tear down services and packages
 uninstall:
-	sudo systemctl stop varnish || true
-	sudo systemctl stop hitch || true
-	sudo bash $(WHM_SCRIPTS)/uninstall.sh || true
-	sudo bash $(CP_SCRIPTS)/uninstall.sh || true
-	sudo dnf remove -y varnish hitch || true
-	sudo systemctl daemon-reload || true
-	sudo systemctl restart httpd || true
+	sudo ./uninstall.sh
 
 clean:
 	@echo "Nothing to clean; workspace-only project."
