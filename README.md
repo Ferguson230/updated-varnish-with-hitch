@@ -70,22 +70,31 @@ The WHM UI exposes stack status, metrics (via `varnishstat`), provisioning, serv
 
 Run `sudo ./install.sh --cpanel-only` to deploy only the end-user plugin. Alternately, execute `sudo bash plugins/cpanel/scripts/install.sh` directly.
 
-- Copies the UI bundle to `/usr/local/cpanel/base/frontend/jupiter/varnish/`.
-- Registers the `.cpanelplugin` manifest so “Varnish Edge Accelerator” appears under **Software** for each account.
-- The CGI backend uses `sudo` to reach the shared `varnishctl.sh`, allowing per-account cache purges and flushes, plus read-only metrics.
+- Copies the UI bundle to `/usr/local/cpanel/base/frontend/jupiter/varnish/` (served from `index.html`).
+- Installs the backend CGI to `/usr/local/cpanel/base/frontend/jupiter/cgi/varnish_user.cgi`.
+- Registers a DynamicUI entry so “Varnish Edge Accelerator” appears under **Software** and links to `varnish/index.html`.
+- The UI makes JSON requests to the CGI and uses `sudo` to reach the shared `varnishctl.sh` for status, purge and flush.
+
+Direct URL (replace hostname and cPanel port as appropriate):
+
+- https://your-server:2083/frontend/jupiter/varnish/index.html
 
 ### cPanel sudoers configuration
 
-Grant non-privileged users access to the limited cache management commands by adding `/etc/sudoers.d/varnish-manager`:
+The installer auto-generates `/etc/sudoers.d/varnish-cpanel-users` by scanning `/home/*` for existing cPanel users and granting them NOPASSWD access to `varnishctl.sh` (both `/opt/varnish-whm-manager/bin/varnishctl.sh` and `/usr/local/varnish-whm-manager/bin/varnishctl.sh`).
 
-```
-Cmnd_Alias VARNISHCTL = /opt/varnish-whm-manager/bin/varnishctl.sh purge *, \
-    /opt/varnish-whm-manager/bin/varnishctl.sh flush, \
-    /opt/varnish-whm-manager/bin/varnishctl.sh status --format=json
-%varnishusers ALL=(root) NOPASSWD: VARNISHCTL
-```
+- Re-run `sudo ./install.sh --cpanel-only` to refresh sudoers after adding/removing accounts.
+- Validate syntax any time with `visudo -c`.
 
-Add the desired cPanel users to the `varnishusers` group.
+If your `varnishctl.sh` lives in a non-standard path, update `service/bin/update_sudoers.sh` to include it and re-run the installer.
+
+### Troubleshooting (cPanel UI)
+
+- JSON.parse errors in the log panel usually indicate the server returned HTML or a permission error. Check the endpoint directly:
+    - `curl -sS 'https://your-server:2083/frontend/jupiter/cgi/varnish_user.cgi?action=status' -H 'Cookie: cpsession=...'`
+    - If you see HTML, ensure you are passing a valid `cpsession` cookie from a logged-in cPanel session.
+    - If you see a sudo error, confirm `/etc/sudoers.d/varnish-cpanel-users` exists and includes your username and the correct `varnishctl.sh` path.
+- “Child failed to make LIVEAPI connection” – the plugin does not use LiveAPI; ensure the DynamicUI entry points to `varnish/index.html` and that you are not visiting a legacy `.live.php` URL.
 
 ## Command Reference
 
