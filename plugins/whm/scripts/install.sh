@@ -54,6 +54,7 @@ ln -sf "${REPO_ROOT}/update_hitch_certs.sh" /usr/local/bin/update_hitch_certs.sh
 install -d -m 0755 "${APPCONF_DIR}"
 if [[ -f "${NEW_APPCONF_SRC}" ]]; then
   install -m 0644 "${NEW_APPCONF_SRC}" "${NEW_APPCONF_DST}"
+  sed -i 's/\r$//' "${NEW_APPCONF_DST}" || true
   if [[ -x "${APPCONF_BIN}/register_appconfig" ]]; then
     "${APPCONF_BIN}/register_appconfig" "${NEW_APPCONF_DST}"
   fi
