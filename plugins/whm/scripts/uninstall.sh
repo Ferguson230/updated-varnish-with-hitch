@@ -4,7 +4,7 @@ set -euo pipefail
 
 TARGET_DIR="/usr/local/cpanel/whostmgr/docroot/cgi/varnish"
 SERVICE_ROOT="/opt/varnish-whm-manager"
-APPCONF_DIR="/usr/local/cpanel/etc/appconfig"
+APPCONF_DIR="/usr/local/cpanel/etc/appconfig/apps"
 APPCONF_BIN="/usr/local/cpanel/bin"
 NEW_APP_NAME="varnish_whm_manager"
 
