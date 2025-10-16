@@ -71,7 +71,7 @@ backup_file() {
 configure_varnish_service() {
     backup_file "${VARNISH_SERVICE_FILE}"
     cp /usr/lib/systemd/system/varnish.service "${VARNISH_SERVICE_FILE}"
-    sed -i "s#ExecStart=.*#ExecStart=/usr/sbin/varnishd -a :80 -a 127.0.0.1:4443,proxy -f ${VARNISH_DEFAULT_VCL} -s malloc,1G -p feature=+http2 -p workspace_backend=256k -p workspace_client=256k -p http_resp_hdr_len=65536 -p http_resp_size=98304 -p thread_pool_min=100 -p thread_pool_max=4000 -p thread_pools=4 -p vcc_allow_inline_c=on#g" "${VARNISH_SERVICE_FILE}"
+    sed -i "s#ExecStart=.*#ExecStart=/usr/sbin/varnishd -a :80 -a 127.0.0.1:4443,proxy -f ${VARNISH_DEFAULT_VCL} -P %t/%N/varnishd.pid -s malloc,1G -p feature=+http2 -p workspace_backend=256k -p workspace_client=256k -p http_resp_hdr_len=65536 -p http_resp_size=98304 -p thread_pool_min=100 -p thread_pool_max=4000 -p thread_pools=4 -p vcc_allow_inline_c=on#g" "${VARNISH_SERVICE_FILE}"
     sed -i 's/^#\?LimitNOFILE.*/LimitNOFILE=131072/' "${VARNISH_SERVICE_FILE}"
     systemctl daemon-reload
 }
