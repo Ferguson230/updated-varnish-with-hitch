@@ -1,8 +1,6 @@
 <?php
-// Proxy for cPanel Varnish user plugin
+// cPanel Varnish user plugin API
 // Handles API requests and serves the HTML interface
-
-header('Content-Type: application/json');
 
 // Get the action from query string or POST body
 $action = isset($_GET['action']) ? $_GET['action'] : '';
@@ -19,66 +17,106 @@ if (!$action) {
     exit;
 }
 
-// Execute the CGI script via system call
-$cgi_script = __DIR__ . '/varnish_user.cgi';
-if (!is_executable($cgi_script)) {
-    echo json_encode(['status' => 'error', 'message' => 'CGI script not executable']);
+// Set JSON header for API responses
+header('Content-Type: application/json');
+
+// Find varnishctl.sh
+$varnishctl_paths = [
+    '/opt/varnish-whm-manager/bin/varnishctl.sh',
+    '/usr/local/varnish-whm-manager/bin/varnishctl.sh',
+];
+$varnishctl = null;
+foreach ($varnishctl_paths as $path) {
+    if (is_executable($path)) {
+        $varnishctl = $path;
+        break;
+    }
+}
+
+if (!$varnishctl) {
+    echo json_encode(['status' => 'error', 'message' => 'varnishctl.sh not found']);
     exit;
 }
 
-// Set up environment for CGI
-$env = [
-    'REQUEST_METHOD' => $_SERVER['REQUEST_METHOD'],
-    'CONTENT_TYPE' => 'application/json',
-    'QUERY_STRING' => http_build_query(['action' => $action]),
-    'REMOTE_USER' => $_SERVER['REMOTE_USER'] ?? '',
-    'SCRIPT_NAME' => $_SERVER['SCRIPT_NAME'] ?? '',
-];
+try {
+    switch ($action) {
+        case 'status':
+            $output = shell_exec("sudo -n " . escapeshellarg($varnishctl) . " status --format=json 2>&1");
+            $data = json_decode($output, true);
+            if ($data === null) {
+                throw new Exception('Failed to parse status output: ' . $output);
+            }
+            echo json_encode(['status' => 'ok', 'data' => $data]);
+            break;
 
-// Get POST data if present
-$post_data = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $post_data = file_get_contents('php://input');
-    $env['CONTENT_LENGTH'] = strlen($post_data);
+        case 'purge':
+            $url = isset($_GET['url']) ? $_GET['url'] : '';
+            if (!$url && $_SERVER['REQUEST_METHOD'] === 'POST') {
+                $input = file_get_contents('php://input');
+                $decoded = json_decode($input, true);
+                $url = isset($decoded['url']) ? $decoded['url'] : '';
+            }
+            if (!$url) {
+                throw new Exception('Missing URL parameter');
+            }
+            $output = shell_exec("sudo -n " . escapeshellarg($varnishctl) . " purge " . escapeshellarg($url) . " 2>&1");
+            echo json_encode(['status' => 'ok', 'message' => 'URL purge requested', 'log' => $output]);
+            break;
+
+        case 'flush':
+            $output = shell_exec("sudo -n " . escapeshellarg($varnishctl) . " flush 2>&1");
+            echo json_encode(['status' => 'ok', 'message' => 'Full cache flush requested', 'log' => $output]);
+            break;
+
+        case 'domains':
+            // Get cPanel user from environment
+            $cpanel_user = isset($_SERVER['REMOTE_USER']) ? $_SERVER['REMOTE_USER'] : '';
+            if (!$cpanel_user) {
+                throw new Exception('Could not determine cPanel user');
+            }
+            
+            // Read domains from cPanel's userdata
+            $userdata_dir = '/var/cpanel/userdata/' . $cpanel_user;
+            if (!is_dir($userdata_dir)) {
+                throw new Exception('User data directory not found');
+            }
+            
+            $domains = [];
+            $main_domain = '';
+            
+            // Read main domain from cache file
+            $cache_file = $userdata_dir . '/cache';
+            if (file_exists($cache_file)) {
+                $cache_data = json_decode(file_get_contents($cache_file), true);
+                if (isset($cache_data['main_domain'])) {
+                    $main_domain = $cache_data['main_domain'];
+                    $domains[] = $main_domain;
+                }
+            }
+            
+            // Scan for all domain conf files
+            $files = glob($userdata_dir . '/*');
+            foreach ($files as $file) {
+                $basename = basename($file);
+                if ($basename === 'main' || $basename === 'cache' || $basename === '.' || $basename === '..') {
+                    continue;
+                }
+                if (is_file($file) && $basename !== $main_domain) {
+                    $domains[] = $basename;
+                }
+            }
+            
+            $result = [
+                'main_domain' => $main_domain,
+                'addon_domains' => array_values(array_diff($domains, [$main_domain])),
+            ];
+            
+            echo json_encode(['status' => 'ok', 'domains' => $result]);
+            break;
+
+        default:
+            throw new Exception('Unknown action: ' . $action);
+    }
+} catch (Exception $e) {
+    echo json_encode(['status' => 'error', 'message' => $e->getMessage()]);
 }
-
-// Build environment string
-$env_string = '';
-foreach ($env as $key => $value) {
-    $env_string .= escapeshellarg($key) . '=' . escapeshellarg($value) . ' ';
-}
-
-// Execute CGI and capture output
-$descriptors = [
-    0 => ['pipe', 'r'],  // stdin
-    1 => ['pipe', 'w'],  // stdout
-    2 => ['pipe', 'w'],  // stderr
-];
-
-$process = proc_open($env_string . escapeshellarg($cgi_script), $descriptors, $pipes);
-
-if (!is_resource($process)) {
-    echo json_encode(['status' => 'error', 'message' => 'Failed to execute CGI']);
-    exit;
-}
-
-// Send POST data to stdin
-if ($post_data) {
-    fwrite($pipes[0], $post_data);
-}
-fclose($pipes[0]);
-
-// Read output
-$output = stream_get_contents($pipes[1]);
-fclose($pipes[1]);
-
-$errors = stream_get_contents($pipes[2]);
-fclose($pipes[2]);
-
-$return_code = proc_close($process);
-
-// Parse CGI output (skip headers if present)
-$parts = preg_split('/\r?\n\r?\n/', $output, 2);
-$body = count($parts) > 1 ? $parts[1] : $parts[0];
-
-echo $body;
