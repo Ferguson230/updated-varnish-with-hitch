@@ -18,8 +18,11 @@ cp "${REPO_ROOT}/plugins/cpanel/cgi/varnish_user.cgi" "${TARGET_DIR}/varnish_use
 chmod 0644 "${TARGET_DIR}/index.live.php" "${TARGET_DIR}/index.html" "${TARGET_DIR}/app.css" "${TARGET_DIR}/app.js"
 chmod 0755 "${TARGET_DIR}/varnish_user.cgi"
 
+# Fix Windows line endings if present
+sed -i 's/\r$//' "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin" 2>/dev/null || true
+
 if [[ -x /usr/local/cpanel/bin/register_cpanelplugin ]]; then
-	/usr/local/cpanel/bin/register_cpanelplugin "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin"
+	/usr/local/cpanel/bin/register_cpanelplugin < "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin"
 elif [[ -x /usr/local/cpanel/bin/manage_plugins ]]; then
 	/usr/local/cpanel/bin/manage_plugins install "${REPO_ROOT}/plugins/cpanel/varnish.cpanelplugin"
 else
