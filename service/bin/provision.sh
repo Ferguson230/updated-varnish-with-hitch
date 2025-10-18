@@ -44,12 +44,29 @@ system_ip() {
 }
 
 ensure_port_reassignment_done() {
-    local http_port https_port
-    http_port=$(awk '/^\s*Listen/ && $2 ~ /:80$/ {print $2}' "${HTTPD_CONF}" | sed 's/.*://') || http_port=""
-    https_port=$(awk '/^\s*Listen/ && $2 ~ /:443$/ {print $2}' "${HTTPD_CONF}" | sed 's/.*://') || https_port=""
-    if [[ "${http_port}" == "80" || "${https_port}" == "443" ]]; then
-        log "WARN" "Apache still listens on 80/443. Attempting automatic port reassignment..."
+    local http_listen https_listen
+    
+    # Check actual listening ports, not just httpd.conf
+    http_listen=$(netstat -tuln 2>/dev/null | grep ":80 " || echo "")
+    https_listen=$(netstat -tuln 2>/dev/null | grep ":443 " || echo "")
+    
+    if [[ -n "${http_listen}" ]] || [[ -n "${https_listen}" ]]; then
+        log "WARN" "Apache currently listening on port 80 and/or 443"
+        log "INFO" "Attempting automatic port reassignment..."
         reassign_cpanel_ports
+        
+        # Verify ports were actually freed
+        sleep 3
+        http_listen=$(netstat -tuln 2>/dev/null | grep ":80 " || echo "")
+        https_listen=$(netstat -tuln 2>/dev/null | grep ":443 " || echo "")
+        
+        if [[ -n "${http_listen}" ]] || [[ -n "${https_listen}" ]]; then
+            log "ERROR" "Port reassignment failed - Apache still listening on 80/443"
+            log "ERROR" "Please manually update Apache ports in WHM and retry"
+            abort "Port conflict cannot be automatically resolved"
+        fi
+    else
+        log "INFO" "Ports 80/443 are already available"
     fi
 }
 
@@ -62,27 +79,59 @@ reassign_cpanel_ports() {
     fi
     
     log "INFO" "Updating cPanel port configuration..."
+    log "INFO" "Current settings:"
+    grep -E "apache_(port|ssl_port)" "${cpanel_config}" | sed 's/^/  /'
     
     # Backup the config
     backup_file "${cpanel_config}"
     
-    # Update Apache ports in cpanel.config
-    sed -i 's/^apache_port=0\.0\.0\.0:80$/apache_port=0.0.0.0:8080/' "${cpanel_config}"
-    sed -i 's/^apache_ssl_port=0\.0\.0\.0:443$/apache_ssl_port=0.0.0.0:8443/' "${cpanel_config}"
+    # Update Apache ports in cpanel.config - be more flexible with sed patterns
+    sed -i 's/^apache_port=.*/apache_port=0.0.0.0:8080/' "${cpanel_config}"
+    sed -i 's/^apache_ssl_port=.*/apache_ssl_port=0.0.0.0:8443/' "${cpanel_config}"
     
-    log "INFO" "Rebuilding Apache configuration..."
+    log "INFO" "Updated settings:"
+    grep -E "apache_(port|ssl_port)" "${cpanel_config}" | sed 's/^/  /'
+    
+    log "INFO" "Rebuilding Apache configuration via /scripts/rebuildhttpdconf..."
     if command_exists /scripts/rebuildhttpdconf; then
-        /scripts/rebuildhttpdconf >/dev/null 2>&1 || log "WARN" "rebuildhttpdconf returned non-zero exit code"
+        if /scripts/rebuildhttpdconf >/dev/null 2>&1; then
+            log "INFO" "Apache configuration rebuild successful"
+        else
+            log "WARN" "/scripts/rebuildhttpdconf returned non-zero exit code"
+        fi
     else
         log "WARN" "/scripts/rebuildhttpdconf not found; skipping httpd.conf rebuild"
     fi
     
-    log "INFO" "Restarting Apache and cPanel services..."
-    systemctl restart httpd >/dev/null 2>&1 || log "WARN" "Failed to restart httpd"
-    systemctl restart cpanel >/dev/null 2>&1 || log "WARN" "Failed to restart cpanel"
+    log "INFO" "Stopping Apache to release ports 80/443..."
+    systemctl stop httpd >/dev/null 2>&1 || log "WARN" "Failed to stop httpd (may already be stopped)"
+    sleep 2
     
-    log "INFO" "Port reassignment completed"
-    sleep 5  # Give services time to start
+    log "INFO" "Restarting cPanel daemon..."
+    systemctl restart cpanel >/dev/null 2>&1 || log "WARN" "Failed to restart cpanel"
+    sleep 2
+    
+    log "INFO" "Starting Apache on new ports (8080/8443)..."
+    if systemctl start httpd >/dev/null 2>&1; then
+        log "INFO" "Apache started successfully"
+    else
+        log "ERROR" "Failed to start httpd on new ports"
+        return 1
+    fi
+    
+    sleep 3  # Give services time to stabilize
+    
+    log "INFO" "Port reassignment completed - verifying..."
+    local http_on_80=$(netstat -tuln 2>/dev/null | grep ":80 " || echo "")
+    local http_on_8080=$(netstat -tuln 2>/dev/null | grep ":8080 " || echo "")
+    local https_on_443=$(netstat -tuln 2>/dev/null | grep ":443 " || echo "")
+    local https_on_8443=$(netstat -tuln 2>/dev/null | grep ":8443 " || echo "")
+    
+    log "INFO" "Port status after reassignment:"
+    [[ -z "${http_on_80}" ]] && log "INFO" "  ✓ Port 80 is FREE" || log "WARN" "  ✗ Port 80 still in use"
+    [[ -n "${http_on_8080}" ]] && log "INFO" "  ✓ Port 8080 is in use (Apache)" || log "WARN" "  ✗ Port 8080 not in use"
+    [[ -z "${https_on_443}" ]] && log "INFO" "  ✓ Port 443 is FREE" || log "WARN" "  ✗ Port 443 still in use"
+    [[ -n "${https_on_8443}" ]] && log "INFO" "  ✓ Port 8443 is in use (Apache)" || log "WARN" "  ✗ Port 8443 not in use"
 }
 
 run_or_warn() {
