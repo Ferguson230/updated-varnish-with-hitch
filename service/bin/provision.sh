@@ -48,8 +48,41 @@ ensure_port_reassignment_done() {
     http_port=$(awk '/^\s*Listen/ && $2 ~ /:80$/ {print $2}' "${HTTPD_CONF}" | sed 's/.*://') || http_port=""
     https_port=$(awk '/^\s*Listen/ && $2 ~ /:443$/ {print $2}' "${HTTPD_CONF}" | sed 's/.*://') || https_port=""
     if [[ "${http_port}" == "80" || "${https_port}" == "443" ]]; then
-        log "WARN" "Apache still listens on 80/443. Update WHM > Tweak Settings so Apache uses 8080/8443 before provisioning."
+        log "WARN" "Apache still listens on 80/443. Attempting automatic port reassignment..."
+        reassign_cpanel_ports
     fi
+}
+
+reassign_cpanel_ports() {
+    local cpanel_config="/var/cpanel/cpanel.config"
+    
+    if [[ ! -f "${cpanel_config}" ]]; then
+        log "ERROR" "cPanel config not found at ${cpanel_config}"
+        return 1
+    fi
+    
+    log "INFO" "Updating cPanel port configuration..."
+    
+    # Backup the config
+    backup_file "${cpanel_config}"
+    
+    # Update Apache ports in cpanel.config
+    sed -i 's/^apache_port=0\.0\.0\.0:80$/apache_port=0.0.0.0:8080/' "${cpanel_config}"
+    sed -i 's/^apache_ssl_port=0\.0\.0\.0:443$/apache_ssl_port=0.0.0.0:8443/' "${cpanel_config}"
+    
+    log "INFO" "Rebuilding Apache configuration..."
+    if command_exists /scripts/rebuildhttpdconf; then
+        /scripts/rebuildhttpdconf >/dev/null 2>&1 || log "WARN" "rebuildhttpdconf returned non-zero exit code"
+    else
+        log "WARN" "/scripts/rebuildhttpdconf not found; skipping httpd.conf rebuild"
+    fi
+    
+    log "INFO" "Restarting Apache and cPanel services..."
+    systemctl restart httpd >/dev/null 2>&1 || log "WARN" "Failed to restart httpd"
+    systemctl restart cpanel >/dev/null 2>&1 || log "WARN" "Failed to restart cpanel"
+    
+    log "INFO" "Port reassignment completed"
+    sleep 5  # Give services time to start
 }
 
 run_or_warn() {
@@ -205,6 +238,41 @@ EOF
         while IFS= read -r cert; do
             [[ -f "${cert}" ]] && printf 'pem-file = "%s"\n' "${cert}" >> "${HITCH_CONF}"
         done <<< "${certs}"
+    log "INFO" "Hitch configuration updated"
+}
+
+verify_port_reassignment() {
+    local http_listen https_listen
+    http_listen=$(netstat -tuln 2>/dev/null | grep ":80 " || echo "")
+    https_listen=$(netstat -tuln 2>/dev/null | grep ":443 " || echo "")
+    
+    if [[ -n "${http_listen}" ]] || [[ -n "${https_listen}" ]]; then
+        log "WARN" "Services still listening on 80/443. Attempting to resolve..."
+        
+        # Try reloading Apache config
+        if systemctl reload httpd 2>/dev/null; then
+            log "INFO" "Apache reloaded successfully"
+        else
+            log "WARN" "Failed to reload Apache - may already be stopped"
+        fi
+        
+        sleep 2
+        
+        # Check again
+        http_listen=$(netstat -tuln 2>/dev/null | grep ":80 " || echo "")
+        https_listen=$(netstat -tuln 2>/dev/null | grep ":443 " || echo "")
+        
+        if [[ -n "${http_listen}" ]] || [[ -n "${https_listen}" ]]; then
+            log "ERROR" "Port conflict persists. Apache may still be using 80/443."
+            log "ERROR" "Verify via: netstat -tuln | grep -E ':(80|443) '"
+            log "ERROR" "Manual fix required - see README.md for troubleshooting"
+            return 1
+        fi
+    fi
+    
+    log "INFO" "Port reassignment verified - ports 80/443 are now available"
+    return 0
+}
     fi
     printf '# pem-dir = "/etc/pki/tls/private"\n' >> "${HITCH_CONF}"
     chmod 0640 "${HITCH_CONF}"
@@ -269,6 +337,10 @@ main() {
     reload_services
 
     run_or_warn "Testing Hitch configuration" hitch --config="${HITCH_CONF}" --test
+    
+    log "INFO" "Verifying port reassignment before starting services..."
+    verify_port_reassignment
+    
     systemctl restart hitch
     systemctl restart varnish
 
