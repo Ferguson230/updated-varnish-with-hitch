@@ -21,7 +21,7 @@ This project packages a battle-tested Varnish Cache 7.5 + Hitch TLS proxy stack 
 - Root shell access (SSH) with `dnf` and `systemctl` available.
 - `python3` available on the host (present by default on EL8) for template rendering.
 - Apache must be moved off the default 80/443 ports *before* provisioning:
-    1. WHM ➜ **Server Configuration** ➜ **Tweak Settings** ➜ search for “Apache”.
+    1. WHM → **Server Configuration** → **Tweak Settings** → search for "Apache".
     2. Set **Apache non-SSL IP/port** to `0.0.0.0:8080`.
     3. Set **Apache SSL port** to `0.0.0.0:8443`.
     4. Save and restart Apache. Expect a brief site outage while the stack is deployed.
@@ -62,7 +62,7 @@ Run `sudo ./install.sh --whm-only` to deploy just the WHM interface. The underly
 - Installs assets into `/usr/local/cpanel/whostmgr/docroot/cgi/varnish/`.
 - Deploys service helpers to `/opt/varnish-whm-manager/bin/` (`provision.sh`, `varnishctl.sh`, `update_certs.sh`).
 - Symlinks helper commands into `/usr/local/bin/` for convenience.
-- After install, the interface appears in WHM ➜ **Plugins ➜ Varnish + Hitch Accelerator**.
+- After install, the interface appears in WHM → **Plugins → Varnish + Hitch Accelerator**.
 
 The WHM UI exposes stack status, metrics (via `varnishstat`), provisioning, service controls, cache flushing, certificate resync from Hitch, and a security headers panel to toggle HSTS + best-practice response headers with a single click. Preferences persist in `/opt/varnish-whm-manager/config/settings.json` and are re-applied whenever the VCL template renders.
 
@@ -70,31 +70,82 @@ The WHM UI exposes stack status, metrics (via `varnishstat`), provisioning, serv
 
 Run `sudo ./install.sh --cpanel-only` to deploy only the end-user plugin. Alternately, execute `sudo bash plugins/cpanel/scripts/install.sh` directly.
 
-- Copies the UI bundle to `/usr/local/cpanel/base/frontend/jupiter/varnish/` (served from `index.html`).
-- Installs the backend CGI to `/usr/local/cpanel/base/frontend/jupiter/cgi/varnish_user.cgi`.
-- Registers a DynamicUI entry so “Varnish Edge Accelerator” appears under **Software** and links to `varnish/index.html`.
-- The UI makes JSON requests to the CGI and uses `sudo` to reach the shared `varnishctl.sh` for status, purge and flush.
+**Plugin Registration & Architecture:**
+The cPanel plugin follows the **native cPanel plugin registration pattern** (proven working with official cPanel and third-party plugins):
 
-Direct URL (replace hostname and cPanel port as appropriate):
+- **install.json** – Plugin metadata for cPanel's feature manager (id, name, description, feature, uri, etc.)
+- **varnish_manager.live.php** – Single-file cPanel-native entry point using `require_once "/usr/local/cpanel/php/cpanel.php"`
+- Detects and deploys to the correct location:
+  - Newer cPanel: `/usr/local/cpanel/base/3rdparty/plugins/varnish_manager/`
+  - Legacy cPanel: `/usr/local/cpanel/base/frontend/jupiter/varnish_manager/`
 
-- https://your-server:2083/frontend/jupiter/varnish/index.html
+**Installation Details:**
+- Installs `install.json` and `varnish_manager.live.php` to the plugin directory.
+- Removes legacy DynamicUI YAML registration (no longer needed).
+- Calls `rebuild_sprites` to refresh the cPanel UI.
+- After install, **Varnish Manager** appears in cPanel → **Software** → **Advanced**.
+
+**Access:**
+- **cPanel UI:** Software → Advanced → Varnish Manager
+- **Direct URL:** https://your-server:2083/frontend/jupiter/varnish_manager/varnish_manager.live.php
+
+**Features:**
+- View real-time Varnish service status (running/stopped, cache hits/misses, uptime).
+- List all your domains (discovered via cPanel UAPI).
+- Purge cache for individual domains.
+- Flush all cache at once.
+- AJAX-powered interface with auto-dismissing notifications.
+
+See `plugins/cpanel/REFACTORING.md` for detailed technical documentation on the architecture changes and migration path from the previous implementation.
 
 ### cPanel sudoers configuration
 
-The installer auto-generates `/etc/sudoers.d/varnish-cpanel-users` by scanning `/home/*` for existing cPanel users and granting them NOPASSWD access to `varnishctl.sh` (both `/opt/varnish-whm-manager/bin/varnishctl.sh` and `/usr/local/varnish-whm-manager/bin/varnishctl.sh`).
+The installer auto-generates `/etc/sudoers.d/varnish-cpanel-users` by scanning `/home/*` for existing cPanel users and granting them NOPASSWD access to varnishadm commands.
 
 - Re-run `sudo ./install.sh --cpanel-only` to refresh sudoers after adding/removing accounts.
 - Validate syntax any time with `visudo -c`.
 
-If your `varnishctl.sh` lives in a non-standard path, update `service/bin/update_sudoers.sh` to include it and re-run the installer.
-
 ### Troubleshooting (cPanel UI)
 
-- JSON.parse errors in the log panel usually indicate the server returned HTML or a permission error. Check the endpoint directly:
-    - `curl -sS 'https://your-server:2083/frontend/jupiter/cgi/varnish_user.cgi?action=status' -H 'Cookie: cpsession=...'`
-    - If you see HTML, ensure you are passing a valid `cpsession` cookie from a logged-in cPanel session.
-    - If you see a sudo error, confirm `/etc/sudoers.d/varnish-cpanel-users` exists and includes your username and the correct `varnishctl.sh` path.
-- “Child failed to make LIVEAPI connection” – the plugin does not use LiveAPI; ensure the DynamicUI entry points to `varnish/index.html` and that you are not visiting a legacy `.live.php` URL.
+- **Plugin not appearing in Software section:**
+  1. Verify installation:
+     ```bash
+     test -d /usr/local/cpanel/base/3rdparty/plugins/varnish_manager && echo "3rdparty OK" || echo "3rdparty MISSING"
+     test -d /usr/local/cpanel/base/frontend/jupiter/varnish_manager && echo "legacy OK" || echo "legacy MISSING"
+     ```
+  2. Check install.json syntax:
+     ```bash
+     cat /usr/local/cpanel/base/3rdparty/plugins/varnish_manager/install.json | python3 -m json.tool
+     ```
+  3. Rebuild cPanel UI and log out/in:
+     ```bash
+     sudo /usr/local/cpanel/bin/rebuild_sprites --all
+     ```
+
+- **"Permission denied" or sudo errors when clicking buttons:**
+  1. Verify sudoers configuration:
+     ```bash
+     sudo visudo -c  # Should print "sudoers file parsed successfully"
+     ```
+  2. Test varnishadm access:
+     ```bash
+     sudo su - cpanel_user
+     sudo varnishadm "ban req.url ~ ."
+     ```
+
+- **Operations show empty responses:**
+  1. Check cPanel error log:
+     ```bash
+     tail -f /usr/local/cpanel/logs/error_log
+     ```
+  2. Verify varnishctl is at the expected path:
+     ```bash
+     ls -la /usr/local/bin/varnishctl
+     ```
+  3. Check Varnish is running:
+     ```bash
+     sudo systemctl status varnish
+     ```
 
 ## Command Reference
 
@@ -132,7 +183,7 @@ Makefile shortcuts are available when working in the repository:
 sudo ./uninstall.sh
 ```
 
-Run `./uninstall.sh --help` to discover options such as keeping packages or skipping service stops. After teardown, revert Apache to ports 80/443 via WHM ➜ **Tweak Settings**.
+Run `./uninstall.sh --help` to discover options such as keeping packages or skipping service stops. After teardown, revert Apache to ports 80/443 via WHM → **Tweak Settings**.
 
 ## Credits
 

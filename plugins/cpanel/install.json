@@ -1,0 +1,12 @@
+{
+    "id": "varnish_manager",
+    "name": "Varnish Manager",
+    "description": "Manage Varnish cache for your domains",
+    "icon": "varnish_icon.png",
+    "featuremanager": 1,
+    "feature": "varnish_cache_manager",
+    "group_id": "advanced",
+    "order": "10",
+    "uri": "varnish_manager/varnish_manager.live.php",
+    "type": "link"
+}

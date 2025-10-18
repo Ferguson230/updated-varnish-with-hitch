@@ -1,52 +1,83 @@
 #!/bin/bash
-# Installer for the cPanel user-facing Varnish plugin.
+# Installer for the cPanel user-facing Varnish Manager plugin.
+# This follows the native cPanel plugin structure with install.json + .live.php
 
 set -euo pipefail
 umask 022
 
-TARGET_DIR="/usr/local/cpanel/base/frontend/jupiter/varnish"
-CGI_DIR="/usr/local/cpanel/base/frontend/jupiter/cgi"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && cd ../../.. && pwd)"
 
-install -d -m 0755 "${TARGET_DIR}"
-install -d -m 0755 "${CGI_DIR}"
+# Plugin directory - using 3rdparty structure (newer cPanel versions)
+PLUGIN_BASE_DIR="/usr/local/cpanel/base/3rdparty/plugins/varnish_manager"
+PLUGIN_LEGACY_DIR="/usr/local/cpanel/base/frontend/jupiter/varnish_manager"
 
-cp "${REPO_ROOT}/plugins/cpanel/static/index.php" "${TARGET_DIR}/index.php"
-cp "${REPO_ROOT}/plugins/cpanel/static/index.html" "${TARGET_DIR}/index.html"
-cp "${REPO_ROOT}/plugins/cpanel/static/app.css" "${TARGET_DIR}/app.css"
-cp "${REPO_ROOT}/plugins/cpanel/static/app.js" "${TARGET_DIR}/app.js"
-cp "${REPO_ROOT}/plugins/cpanel/cgi/varnish_user.cgi" "${CGI_DIR}/varnish_user.cgi"
+# Try 3rdparty first (newer cPanel), fall back to frontend (older cPanel)
+if [[ -d /usr/local/cpanel/base/3rdparty/plugins ]]; then
+    PLUGIN_DIR="${PLUGIN_BASE_DIR}"
+    echo "Using 3rdparty plugin directory: ${PLUGIN_DIR}"
+else
+    PLUGIN_DIR="${PLUGIN_LEGACY_DIR}"
+    echo "Using legacy frontend directory: ${PLUGIN_DIR}"
+fi
 
-chmod 0644 "${TARGET_DIR}/index.php" "${TARGET_DIR}/index.html" "${TARGET_DIR}/app.css" "${TARGET_DIR}/app.js"
-chmod 0755 "${CGI_DIR}/varnish_user.cgi"
+# Create plugin directory
+install -d -m 0755 "${PLUGIN_DIR}"
 
-# Create a simple dynamic icon list entry for cPanel
-DYNAMICUI_DIR="/var/cpanel/dynamicui/jupiter/Software"
-install -d -m 0755 "${DYNAMICUI_DIR}"
+# Copy install.json (required for cPanel plugin registration)
+cp "${REPO_ROOT}/plugins/cpanel/install.json" "${PLUGIN_DIR}/install.json"
 
-cat > "${DYNAMICUI_DIR}/varnish.yaml" <<'DYNAMICUI'
----
-id: varnish_edge_accelerator
-name: Varnish Edge Accelerator
-description: Manage Varnish cache for your website
-url: varnish/index.html
-icon: data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0OCIgaGVpZ2h0PSI0OCI+PHBhdGggZmlsbD0iIzAwNzNhYSIgZD0iTTI0IDRMMCA0MCA0OCA0MHoiLz48L3N2Zz4=
-order: 50
-DYNAMICUI
+# Copy main .live.php file (cPanel native entry point)
+cp "${REPO_ROOT}/plugins/cpanel/varnish_manager.live.php" "${PLUGIN_DIR}/varnish_manager.live.php"
 
-chmod 0644 "${DYNAMICUI_DIR}/varnish.yaml"
+# Set correct permissions
+chmod 0644 "${PLUGIN_DIR}/install.json"
+chmod 0644 "${PLUGIN_DIR}/varnish_manager.live.php"
 
-# Rebuild the dynamicui cache
+# Remove old DynamicUI registration if it exists
+if [[ -f /var/cpanel/dynamicui/jupiter/Software/varnish.yaml ]]; then
+    rm -f /var/cpanel/dynamicui/jupiter/Software/varnish.yaml
+    echo "Removed legacy DynamicUI registration"
+fi
+
+# For backwards compatibility, also install to legacy location if needed
+if [[ "${PLUGIN_DIR}" == "${PLUGIN_BASE_DIR}" ]] && [[ -d /usr/local/cpanel/base/frontend/jupiter ]]; then
+    install -d -m 0755 "${PLUGIN_LEGACY_DIR}"
+    cp "${REPO_ROOT}/plugins/cpanel/install.json" "${PLUGIN_LEGACY_DIR}/install.json"
+    cp "${REPO_ROOT}/plugins/cpanel/varnish_manager.live.php" "${PLUGIN_LEGACY_DIR}/varnish_manager.live.php"
+    chmod 0644 "${PLUGIN_LEGACY_DIR}/install.json"
+    chmod 0644 "${PLUGIN_LEGACY_DIR}/varnish_manager.live.php"
+fi
+
+# Signal cPanel to reload plugin registry
 if [[ -x /usr/local/cpanel/bin/rebuild_sprites ]]; then
-	/usr/local/cpanel/bin/rebuild_sprites --all >/dev/null 2>&1 || true
+    /usr/local/cpanel/bin/rebuild_sprites --all >/dev/null 2>&1 || true
+fi
+
+# Restart cPanel daemon to pick up new plugin
+if [[ -x /usr/local/cpanel/bin/checkfilesystem ]]; then
+    /usr/local/cpanel/bin/checkfilesystem >/dev/null 2>&1 || true
 fi
 
 cat <<'EOF'
-cPanel Varnish plugin installed.
-Users can access "Varnish Edge Accelerator" in the Software section of cPanel.
-Direct URL: https://your-server:2083/frontend/jupiter/varnish/index.live.php
+✓ cPanel Varnish Manager plugin installed successfully!
 
-Next steps:
-  1. Configure sudoers so cPanel users can call varnishctl flush/purge if desired.
-  2. Users may need to refresh cPanel or log out/in to see the new plugin.
+Installation Details:
+  - Plugin ID: varnish_manager
+  - Entry Point: varnish_manager.live.php (cPanel native format)
+  - Registration: install.json (feature manager compatible)
+
+Access the plugin:
+  - In cPanel: Software > Advanced > Varnish Manager
+  - Direct URL: https://your-server:2083/frontend/jupiter/varnish_manager/varnish_manager.live.php
+
+Next Steps:
+  1. If your account is newly created, you may need to log out and log back into cPanel
+  2. The plugin uses cPanel's native UAPI to discover your domains
+  3. Cache operations require proper sudoers configuration (see main installation guide)
+
+For debugging:
+  - Check cPanel error log: tail -f /usr/local/cpanel/logs/error_log
+  - Verify plugin file: ls -la "${PLUGIN_DIR}"
+  - Test sudoers access: sudo /usr/local/bin/varnishctl status
 EOF
+
