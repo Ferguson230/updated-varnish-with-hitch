@@ -1,8 +1,57 @@
-Before you begin, Go to WHM and search for Tweak Settings, it can be found at Server Configuration > Tweak Settings.
-Search apache in the Find box, scroll down under System area and change the areas like below.
-For Apache non-SSL IP/port, change from default 0.0.0.0:80 default to 0.0.0.0:8080 using the text box below.
-For Apache SSL port, change from 0.0.0.0:443 default to 0.0.0.0:8443 automatically by editing httpd.conf and Restart using /scripts/restartsrv_httpd.
-Please note: This would temporarily make user websites inaccessible until finished.
+## IMPORTANT: Pre-Installation Port Configuration
+
+Before running the installation script, you MUST configure Apache to use ports 8080/8443 instead of 80/443. This is required because Varnish needs port 80 and Hitch needs port 443.
+
+### Option A: Automatic Port Fix (Easiest)
+
+The installation script will attempt to automatically reassign Apache ports. However, if it fails, use Option B or C below.
+
+### Option B: Manual Port Configuration (Recommended)
+
+Run these commands on your server before installation:
+
+```bash
+# Update cPanel configuration
+sudo sed -i 's/^apache_port=.*/apache_port=0.0.0.0:8080/' /var/cpanel/cpanel.config
+sudo sed -i 's/^apache_ssl_port=.*/apache_ssl_port=0.0.0.0:8443/' /var/cpanel/cpanel.config
+
+# Rebuild Apache configuration
+sudo /scripts/rebuildhttpdconf
+
+# Restart Apache and cPanel
+sudo systemctl stop httpd
+sudo systemctl restart cpanel
+sudo systemctl start httpd
+
+# Wait and verify
+sleep 3
+netstat -tuln | grep -E ":(8080|8443)"
+```
+
+### Option C: GUI Port Configuration (WHM)
+
+1. Login to WHM (WebHost Manager)
+2. Go to: **Server Configuration** → **Tweak Settings**
+3. Search for "apache" in the Find box
+4. Under System area, update:
+   - **Apache non-SSL IP/port**: Change from `0.0.0.0:80` to `0.0.0.0:8080`
+   - **Apache SSL port**: Change from `0.0.0.0:443` to `0.0.0.0:8443`
+5. Click **Save**
+6. Wait for Apache to restart
+
+**Note:** Websites will be temporarily inaccessible during the Apache restart while ports are being reconfigured.
+
+### Verify Port Configuration
+
+Before running the installation, verify Apache is on the correct ports:
+
+```bash
+netstat -tuln | grep -E ":(8080|8443)"
+```
+
+You should see Apache listening on 8080 and 8443, and ports 80 and 443 should be FREE.
+
+**If ports 80 or 443 are still in use, the installation will fail.** See [QUICK_PORT_FIX.md](docs/QUICK_PORT_FIX.md) for troubleshooting.
 
 1. Preparation
 
@@ -141,5 +190,90 @@ if( strpos( $_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false )
 
 
 If you have WordPress Installed, please follow the configuration below to optimize it further as seen https://github.com/Ferguson230/updated-varnish-with-hitch/blob/main/vcl%20config%20for%20wordpress.
+
+## Troubleshooting
+
+### Installation Fails with "Address already in use" on Port 80 or 443
+
+This means Apache is still listening on ports 80/443 and Varnish/Hitch cannot bind to those ports.
+
+**Solution:** See [QUICK_PORT_FIX.md](docs/QUICK_PORT_FIX.md) for immediate fixes.
+
+Quick fix:
+```bash
+sudo bash service/bin/recover_ports.sh
+```
+
+Then retry:
+```bash
+sudo ./install.sh
+```
+
+### Varnish Service Fails to Start
+
+1. Check if port 80 is available:
+   ```bash
+   sudo netstat -tuln | grep :80
+   ```
+   If anything shows, Apache is still on port 80. Use the port fix above.
+
+2. Check Varnish logs:
+   ```bash
+   sudo systemctl status varnish
+   sudo journalctl -u varnish -n 20
+   ```
+
+3. Verify configuration:
+   ```bash
+   sudo varnishd -f /etc/varnish/default.vcl
+   ```
+
+### Hitch Service Fails to Start
+
+1. Check if port 443 is available:
+   ```bash
+   sudo netstat -tuln | grep :443
+   ```
+   If anything shows, Apache is still on port 443. Use the port fix above.
+
+2. Verify certificate paths:
+   ```bash
+   sudo hitch --config=/etc/hitch/hitch.conf --test
+   ```
+
+3. Check Hitch logs:
+   ```bash
+   sudo systemctl status hitch
+   sudo journalctl -u hitch -n 20
+   ```
+
+### Sites Still Inaccessible After Installation
+
+1. Verify all services are running:
+   ```bash
+   sudo systemctl status varnish hitch httpd
+   ```
+
+2. Test direct access to backend (Apache on 8080):
+   ```bash
+   curl -v http://localhost:8080/
+   ```
+
+3. Check Varnish is responding:
+   ```bash
+   curl -v http://localhost/
+   curl -I http://localhost/ | grep -E "X-Varnish|X-Cache"
+   ```
+
+4. Check Hitch/HTTPS:
+   ```bash
+   curl -v https://localhost/ --insecure
+   ```
+
+### For More Help
+
+- See: [QUICK_PORT_FIX.md](docs/QUICK_PORT_FIX.md) - Quick port configuration fixes
+- See: [APACHE_PORT_TROUBLESHOOTING.md](docs/APACHE_PORT_TROUBLESHOOTING.md) - Comprehensive troubleshooting guide
+- Run: `sudo bash service/bin/recover_ports.sh` - Emergency port recovery script
 
 That's it, enjoy.
