@@ -238,7 +238,10 @@ EOF
         while IFS= read -r cert; do
             [[ -f "${cert}" ]] && printf 'pem-file = "%s"\n' "${cert}" >> "${HITCH_CONF}"
         done <<< "${certs}"
-    log "INFO" "Hitch configuration updated"
+        printf '# pem-dir = "/etc/pki/tls/private"\n' >> "${HITCH_CONF}"
+    fi
+    chmod 0640 "${HITCH_CONF}"
+    log "INFO" "Wrote Hitch configuration with detected certificates"
 }
 
 verify_port_reassignment() {
@@ -272,11 +275,6 @@ verify_port_reassignment() {
     
     log "INFO" "Port reassignment verified - ports 80/443 are now available"
     return 0
-}
-    fi
-    printf '# pem-dir = "/etc/pki/tls/private"\n' >> "${HITCH_CONF}"
-    chmod 0640 "${HITCH_CONF}"
-    log "INFO" "Wrote Hitch configuration with detected certificates"
 }
 
 reload_services() {
